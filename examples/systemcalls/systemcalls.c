@@ -1,5 +1,13 @@
 #include "systemcalls.h"
 
+#include <sys/stat.h>
+#include <sys/wait.h>
+#include <sys/types.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -9,15 +17,8 @@
 */
 bool do_system(const char *cmd)
 {
-
-/*
- * TODO  add your code here
- *  Call the system() function with the command set in the cmd
- *   and return a boolean true if the system() call completed with success
- *   or false() if it returned a failure
-*/
-
-    return true;
+    int res = system(cmd);
+    return res == 0;
 }
 
 /**
@@ -39,15 +40,12 @@ bool do_exec(int count, ...)
     va_list args;
     va_start(args, count);
     char * command[count+1];
-    int i;
-    for(i=0; i<count; i++)
+    for(int i=0; i<count; i++)
     {
         command[i] = va_arg(args, char *);
     }
+    va_end(args);
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
 
 /*
  * TODO:
@@ -58,10 +56,24 @@ bool do_exec(int count, ...)
  *   as second argument to the execv() command.
  *
 */
-
-    va_end(args);
-
-    return true;
+    pid_t fid = fork();
+    if (fid == -1) {
+	return false;
+    }
+    
+    if (fid == 0) {
+	execv(command[0], command);
+	exit(1);
+    }
+    else {
+	int status;
+        int err = waitpid(fid, &status, 0);
+        if (err == -1) {
+	    return false;
+	}
+	status = WEXITSTATUS(status);
+	return status == 0;
+    }
 }
 
 /**
@@ -79,11 +91,8 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     {
         command[i] = va_arg(args, char *);
     }
+    va_end(args);
     command[count] = NULL;
-    // this line is to avoid a compile warning before your implementation is complete
-    // and may be removed
-    command[count] = command[count];
-
 
 /*
  * TODO
@@ -92,8 +101,31 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+    int fd = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fd == -1) {
+	return false;
+    }
 
-    va_end(args);
+    int fid = fork();
+    if (fid == -1) {
+	return false;
+    }
 
-    return true;
+    if (fid == 0) {
+	if (dup2(fd, 1) == -1) {
+	    exit(1);
+	}
+	close(fd);
+	execv(command[0], command);
+	exit(1);
+    }
+    else {
+        int status;
+	int err = waitpid(fid, &status, 0);
+        if (err == -1) {
+	    return false;
+	}
+	status = WEXITSTATUS(status);
+	return status == 0;
+    }
 }
